@@ -1,6 +1,6 @@
-import { SEVERITY_COLOR, vehicleStatus, Chip } from './ui.jsx';
+import { Badge, vehicleStatus } from './ui.jsx';
 
-/** Selectable fleet list. Status reads from the colour bar *and* the chip. */
+/** Selectable fleet list. Status is a labelled badge, never colour alone. */
 export default function VehicleRoster({ vehicles, framesById, selectedId, onSelect, alertCounts }) {
   return (
     <div className="roster" role="listbox" aria-label="Fleet roster">
@@ -13,35 +13,32 @@ export default function VehicleRoster({ vehicles, framesById, selectedId, onSele
         return (
           <button
             key={v.id}
-            className="roster__item"
+            className="rosteritem"
             role="option"
             aria-selected={selected}
             aria-current={selected}
             onClick={() => onSelect(v.id)}
           >
-            <span
-              className="roster__bar"
-              style={{ background: SEVERITY_COLOR[status.severity] }}
-              aria-hidden="true"
-            />
-
-            <span style={{ minWidth: 0 }}>
-              <span className="roster__id">{v.id}</span>
-              <span className="roster__meta">
-                <span>{v.registration}</span>
-                <span>·</span>
-                <span>{v.make} {v.model}</span>
-                {v.ownership === 'OUTSOURCED' && <Chip severity="info">Outsourced</Chip>}
-                {alerts > 0 && <Chip severity="critical">{alerts} alert{alerts > 1 ? 's' : ''}</Chip>}
+            <span className="rosteritem__main">
+              <span className="rosteritem__top">
+                <span className="rosteritem__id">{v.id}</span>
+                <Badge tone={status.tone} dot>{status.label}</Badge>
+                {alerts > 0 && (
+                  <Badge tone="danger">{alerts} alert{alerts > 1 ? 's' : ''}</Badge>
+                )}
+              </span>
+              <span className="rosteritem__sub">
+                {v.make} {v.model} · {v.registration}
+                {v.ownership === 'OUTSOURCED' && ' · outsourced'}
               </span>
             </span>
 
-            <span className="roster__right">
-              <span className="roster__speed">
+            <span className="rosteritem__right">
+              <span className="rosteritem__speed">
                 {f ? f.speed : '—'}
-                <span className="unit">km/h</span>
+                <small> km/h</small>
               </span>
-              <span className="roster__zone">{f ? f.zoneName : status.label}</span>
+              <div className="rosteritem__zone">{f ? f.zoneName : '—'}</div>
             </span>
           </button>
         );

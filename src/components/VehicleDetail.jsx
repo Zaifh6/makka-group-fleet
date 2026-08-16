@@ -3,15 +3,15 @@ import Dashcam from './Dashcam.jsx';
 import FuelPanel from './FuelPanel.jsx';
 import MaintenancePanel from './MaintenancePanel.jsx';
 import EconomicsPanel from './EconomicsPanel.jsx';
-import { Chip, KV, vehicleStatus } from './ui.jsx';
+import { Badge, Stat, vehicleStatus, toneFor } from './ui.jsx';
 import { int, num, durationMin } from '../lib/format.js';
 
 const TABS = [
   { key: 'overview', label: 'Overview' },
-  { key: 'fuel', label: 'Fuel & efficiency' },
+  { key: 'fuel', label: 'Fuel' },
   { key: 'maintenance', label: 'Maintenance' },
-  { key: 'economics', label: 'Economics' },
-  { key: 'video', label: 'Video & clips' },
+  { key: 'economics', label: 'Cost & value' },
+  { key: 'video', label: 'Camera' },
 ];
 
 function RawPayload({ frame }) {
@@ -28,23 +28,7 @@ function RawPayload({ frame }) {
     fuel_level: frame.fuel_level,
     timestamp: frame.timestamp,
   };
-  return (
-    <pre
-      className="n"
-      style={{
-        margin: 0,
-        background: 'var(--surface-sunken)',
-        border: '1px solid var(--rule)',
-        borderRadius: 3,
-        padding: '10px 12px',
-        fontSize: 11,
-        lineHeight: 1.6,
-        overflowX: 'auto',
-      }}
-    >
-      {JSON.stringify(payload, null, 2)}
-    </pre>
-  );
+  return <pre className="json">{JSON.stringify(payload, null, 2)}</pre>;
 }
 
 export default function VehicleDetail({
@@ -53,24 +37,25 @@ export default function VehicleDetail({
 }) {
   const [tab, setTab] = useState('overview');
   const status = vehicleStatus(vehicle, frame);
-  const criticalCount = vehicleAlerts.filter(
+  const needsAction = vehicleAlerts.filter(
     (a) => a.severity === 'critical' || a.severity === 'serious'
-  ).length;
+  );
 
   return (
     <section className="panel">
       <header className="panel__head">
-        <div className="row" style={{ gap: 10 }}>
-          <h2 className="panel__title">{vehicle.id}</h2>
-          <Chip severity={status.severity}>{status.label}</Chip>
-          {vehicle.ownership === 'OUTSOURCED' && <Chip severity="info">Outsourced</Chip>}
-          <span className="panel__meta">
-            {vehicle.registration} · {vehicle.make} {vehicle.model} · {vehicle.year}
-          </span>
+        <div>
+          <div className="row" style={{ gap: 10 }}>
+            <h2 className="panel__title" style={{ fontFamily: 'var(--mono)' }}>{vehicle.id}</h2>
+            <Badge tone={status.tone} dot>{status.label}</Badge>
+            {vehicle.ownership === 'OUTSOURCED' && <Badge tone="info">Outsourced</Badge>}
+          </div>
+          <div className="panel__sub">
+            {vehicle.make} {vehicle.model} {vehicle.year} · {vehicle.registration} ·{' '}
+            {vehicle.driver.name}
+          </div>
         </div>
-        <span className="panel__meta">
-          {frame ? `${frame.zoneName} · ${frame.region}` : '—'}
-        </span>
+        <span className="panel__meta">{frame ? frame.zoneName : '—'}</span>
       </header>
 
       <div className="tabs" role="tablist">
@@ -83,8 +68,8 @@ export default function VehicleDetail({
             onClick={() => setTab(t.key)}
           >
             {t.label}
-            {t.key === 'overview' && criticalCount > 0 && (
-              <span className="tab__badge">{criticalCount}</span>
+            {t.key === 'overview' && needsAction.length > 0 && (
+              <span className="tab__count">{needsAction.length}</span>
             )}
           </button>
         ))}
@@ -93,54 +78,69 @@ export default function VehicleDetail({
       <div className="panel__body">
         {tab === 'overview' && (
           <div className="stack">
-            <div className="kv">
-              <KV label="Speed" value={frame ? frame.speed : '—'} unit="km/h" size="lg" />
-              <KV
-                label="Ignition"
-                value={frame ? (frame.ignition ? 'ON' : 'OFF') : '—'}
-                mono
+            {needsAction.length > 0 && (
+              <div
+                style={{
+                  background: 'var(--danger-soft)',
+                  border: '1px solid var(--danger-border)',
+                  borderRadius: 'var(--r)',
+                  padding: '12px 14px',
+                }}
+              >
+                <div className="row" style={{ marginBottom: 6 }}>
+                  <Badge tone="danger" dot>Needs attention</Badge>
+                </div>
+                {needsAction.slice(0, 3).map((a) => (
+                  <div key={a.id} style={{ fontSize: 13, color: 'var(--text)' }}>
+                    <strong style={{ fontWeight: 600 }}>{a.title}</strong>
+                    <span className="muted"> — {a.detail}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="stats">
+              <Stat label="Speed" value={frame ? frame.speed : '—'} unit="km/h" size="lg" />
+              <Stat
+                label="Engine"
+                value={frame ? (frame.ignition ? 'Running' : 'Off') : '—'}
+                text
+                tone={frame?.ignition ? 'ok' : 'neutral'}
               />
-              <KV label="Heading" value={frame ? `${frame.heading}° ${frame.headingLabel}` : '—'} />
-              <KV label="Odometer" value={frame ? int(frame.odometer) : int(vehicle.odometer)} unit="km" />
-              <KV label="Distance today" value={frame ? num(frame.distanceToday, 1) : '—'} unit="km" />
-              <KV label="Fuel level" value={frame ? frame.fuel_level : '—'} unit="%" />
-              <KV label="Stops today" value={frame ? frame.stops : '—'} />
-              <KV label="Idle time" value={frame ? durationMin(frame.idleMinutes) : '—'} />
+              <Stat label="Heading" value={frame ? `${frame.heading}° ${frame.headingLabel}` : '—'} />
+              <Stat label="Odometer" value={int(frame ? frame.odometer : vehicle.odometer)} unit="km" />
+              <Stat label="Driven today" value={frame ? num(frame.distanceToday, 1) : '—'} unit="km" />
+              <Stat label="Fuel in tank" value={frame ? frame.fuel_level : '—'} unit="%" />
+              <Stat label="Stops today" value={frame ? frame.stops : '—'} />
+              <Stat label="Time stopped" value={frame ? durationMin(frame.idleMinutes) : '—'} text />
             </div>
 
-            <div className="grid-2">
-              <div>
-                <div className="section-label">Live camera</div>
-                <Dashcam vehicle={vehicle} frame={frame} />
+            <div className="grid2">
+              <div className="stack stack--tight">
+                <span className="sectiontitle">Live camera</span>
+                <Dashcam vehicle={vehicle} frame={frame} compact />
               </div>
 
-              <div className="stack">
-                <div>
-                  <div className="section-label">Assignment</div>
-                  <div className="kv">
-                    <KV label="Driver" value={vehicle.driver.name} mono={false} />
-                    <KV label="Driver rating" value={num(vehicle.driver.rating, 1)} unit="/ 5" />
-                    <KV label="Contact" value={vehicle.driver.phone} />
-                    <KV label="Licence" value={vehicle.driver.licence} />
-                    <KV label="Home depot" value={vehicle.homeDepot} mono={false} />
-                    <KV label="Vehicle type" value={vehicle.type} mono={false} />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="section-label">Tracking device</div>
-                  <div className="kv">
-                    <KV label="Model" value={vehicle.device.model} mono={false} />
-                    <KV label="IMEI" value={vehicle.device.imei} />
-                    <KV label="Firmware" value={vehicle.device.firmware} />
-                    <KV label="MDVR" value={vehicle.device.mdvr || 'None fitted'} mono={false} />
-                  </div>
+              <div className="stack stack--tight">
+                <span className="sectiontitle">Driver &amp; device</span>
+                <div className="stats">
+                  <Stat label="Driver" value={vehicle.driver.name} text />
+                  <Stat label="Rating" value={num(vehicle.driver.rating, 1)} unit="/ 5" />
+                  <Stat label="Phone" value={vehicle.driver.phone} />
+                  <Stat label="Licence" value={vehicle.driver.licence} />
+                  <Stat label="Home depot" value={vehicle.homeDepot} text />
+                  <Stat label="Vehicle type" value={vehicle.type} text />
+                  <Stat label="Tracker" value={vehicle.device.model} text />
+                  <Stat label="Camera unit" value={vehicle.device.mdvr || 'None fitted'} text />
                 </div>
               </div>
             </div>
 
             <div>
-              <div className="section-label">Latest device payload</div>
+              <div className="sectionhead" style={{ marginBottom: 8 }}>
+                <span className="sectiontitle">Latest device payload</span>
+                <span className="hint">exactly what the tracker sends every few seconds</span>
+              </div>
               <RawPayload frame={frame} />
             </div>
           </div>
@@ -171,39 +171,39 @@ export default function VehicleDetail({
 
             <div className="divider" />
 
-            <div className="row row--between">
-              <span className="section-label" style={{ marginBottom: 0 }}>
-                Event clips uploaded to cloud
-              </span>
-              <span className="panel__meta">
+            <div className="sectionhead">
+              <span className="sectiontitle">Saved incident clips</span>
+              <span className="hint">
                 {clips.length} clip{clips.length === 1 ? '' : 's'} ·{' '}
-                {clips.reduce((s, c) => s + c.sizeMb, 0)} MB
+                {clips.reduce((s, c) => s + c.sizeMb, 0)} MB uploaded
               </span>
             </div>
 
-            <p className="faint" style={{ fontSize: 11.5, margin: 0 }}>
-              Continuous footage stays on the in-vehicle 128 GB buffer. Only clips around a
-              flagged event are pushed to cloud storage, which is what keeps video costs
-              survivable across a full fleet.
+            <p className="hint">
+              Normal driving stays on the 128 GB recorder in the vehicle. Only the seconds
+              around a flagged event get uploaded, which is what keeps video costs
+              manageable across a full fleet.
             </p>
 
             {clips.length === 0 ? (
-              <p className="empty">No events have triggered an upload for this vehicle yet.</p>
+              <p className="empty">
+                No incidents have triggered an upload for this vehicle yet.
+              </p>
             ) : (
-              <div className="clips">
+              <div>
                 {clips.map((c) => (
                   <div className="clip" key={c.id}>
                     <span className="clip__thumb">{c.durationSec}s</span>
                     <span className="clip__body">
-                      <span className="clip__title">{c.reason}</span>
-                      <span className="clip__meta">
+                      <div className="clip__title">{c.reason}</div>
+                      <div className="clip__meta">
                         {new Date(c.timestamp).toLocaleTimeString('en-GB', {
                           hour: '2-digit', minute: '2-digit', second: '2-digit',
                         })}{' '}
                         · {c.zoneName} · {c.channels.join(' + ')} · {c.sizeMb} MB
-                      </span>
+                      </div>
                     </span>
-                    <Chip severity={c.severity}>{c.uploadState}</Chip>
+                    <Badge tone={toneFor(c.severity)}>Uploaded</Badge>
                   </div>
                 ))}
               </div>

@@ -1,74 +1,88 @@
-import { Chip } from './ui.jsx';
+import { Badge } from './ui.jsx';
 import { int, rs } from '../lib/format.js';
 
-const STATUS_SEVERITY = { OVERDUE: 'critical', DUE_SOON: 'warning', OK: 'good' };
-const STATUS_LABEL = { OVERDUE: 'Overdue', DUE_SOON: 'Due soon', OK: 'Scheduled' };
+const STATUS = {
+  OVERDUE:  { tone: 'danger', label: 'Overdue' },
+  DUE_SOON: { tone: 'warn', label: 'Due soon' },
+  OK:       { tone: 'ok', label: 'On schedule' },
+};
 
 export default function MaintenancePanel({ schedule, history, odometer }) {
   const spend = history.reduce((s, h) => s + h.partsCost + h.labourCost, 0);
+  const overdue = schedule.filter((i) => i.status === 'OVERDUE').length;
+  const soon = schedule.filter((i) => i.status === 'DUE_SOON').length;
 
   return (
     <div className="stack">
-      <div className="row row--between">
-        <span className="section-label" style={{ marginBottom: 0 }}>
-          Service schedule vs live odometer
-        </span>
-        <span className="panel__meta">{int(odometer)} km</span>
+      <div className="row">
+        {overdue > 0 && <Badge tone="danger" dot>{overdue} item{overdue > 1 ? 's' : ''} overdue</Badge>}
+        {soon > 0 && <Badge tone="warn" dot>{soon} due soon</Badge>}
+        {overdue === 0 && soon === 0 && <Badge tone="ok" dot>All services on schedule</Badge>}
+        <span className="hint">measured against the live odometer of {int(odometer)} km</span>
       </div>
 
       <div className="tablewrap">
         <table className="tbl">
           <thead>
             <tr>
-              <th>Item</th>
-              <th>Last service</th>
-              <th>Interval</th>
-              <th>Next due</th>
+              <th>Service item</th>
+              <th>Last done</th>
+              <th>Every</th>
+              <th>Next due at</th>
               <th>Remaining</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
-            {schedule.map((item) => (
-              <tr key={item.type}>
-                <td>{item.type}</td>
-                <td className="n derived">
-                  {int(item.lastServiceKm)} km
-                  <span className="faint"> · {item.lastServiceDate}</span>
-                </td>
-                <td className="n derived">{int(item.intervalKm)} km</td>
-                <td className="n">{int(item.nextDueKm)} km</td>
-                <td
-                  className="n"
-                  style={{ color: item.remainingKm < 0 ? 'var(--critical)' : item.status === 'DUE_SOON' ? 'var(--warning)' : 'var(--ink)' }}
-                >
-                  {item.remainingKm < 0 ? '−' : ''}{int(Math.abs(item.remainingKm))} km
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  <Chip severity={STATUS_SEVERITY[item.status]}>{STATUS_LABEL[item.status]}</Chip>
-                </td>
-              </tr>
-            ))}
+            {schedule.map((item) => {
+              const s = STATUS[item.status];
+              return (
+                <tr key={item.type}>
+                  <td style={{ fontWeight: 550 }}>{item.type}</td>
+                  <td className="n dim">
+                    {int(item.lastServiceKm)} km
+                    <span className="faint"> · {item.lastServiceDate}</span>
+                  </td>
+                  <td className="n dim">{int(item.intervalKm)} km</td>
+                  <td className="n">{int(item.nextDueKm)} km</td>
+                  <td
+                    className="n"
+                    style={{
+                      color:
+                        item.status === 'OVERDUE' ? 'var(--danger)'
+                        : item.status === 'DUE_SOON' ? 'var(--warn)'
+                        : 'var(--text)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {item.remainingKm < 0
+                      ? `${int(Math.abs(item.remainingKm))} km over`
+                      : `${int(item.remainingKm)} km`}
+                  </td>
+                  <td><Badge tone={s.tone}>{s.label}</Badge></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       <div className="divider" />
 
-      <div className="row row--between">
-        <span className="section-label" style={{ marginBottom: 0 }}>Work history</span>
-        <span className="panel__meta">{rs(spend)} recorded</span>
+      <div className="sectionhead">
+        <span className="sectiontitle">Completed work</span>
+        <span className="hint">{rs(spend)} recorded</span>
       </div>
 
       {history.length === 0 ? (
-        <p className="empty">No completed work on record.</p>
+        <p className="empty">No completed work on record for this vehicle.</p>
       ) : (
         <div className="tablewrap">
           <table className="tbl">
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Work</th>
+                <th>Work done</th>
                 <th>Odometer</th>
                 <th>Parts</th>
                 <th>Labour</th>
@@ -79,14 +93,14 @@ export default function MaintenancePanel({ schedule, history, odometer }) {
               {history.map((h) => (
                 <tr key={h.id}>
                   <td className="n">{h.date}</td>
-                  <td style={{ textAlign: 'left', whiteSpace: 'normal' }}>
-                    <strong style={{ fontWeight: 600 }}>{h.type}</strong>
-                    <div className="faint" style={{ fontSize: 11 }}>{h.description} · {h.vendor}</div>
+                  <td style={{ whiteSpace: 'normal' }}>
+                    <div style={{ fontWeight: 550 }}>{h.type}</div>
+                    <div className="hint">{h.description} · {h.vendor}</div>
                   </td>
-                  <td className="n derived">{int(h.odo)}</td>
-                  <td className="n derived">{int(h.partsCost)}</td>
-                  <td className="n derived">{int(h.labourCost)}</td>
-                  <td className="n">{int(h.partsCost + h.labourCost)}</td>
+                  <td className="n dim">{int(h.odo)}</td>
+                  <td className="n dim">{int(h.partsCost)}</td>
+                  <td className="n dim">{int(h.labourCost)}</td>
+                  <td className="n" style={{ fontWeight: 600 }}>{int(h.partsCost + h.labourCost)}</td>
                 </tr>
               ))}
             </tbody>

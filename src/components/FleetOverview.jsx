@@ -1,74 +1,74 @@
 import { rsCompact, kmCompact, int, num } from '../lib/format.js';
-import { SEVERITY_COLOR } from './ui.jsx';
+import { STATUS_COLOR } from './ui.jsx';
 
 /**
- * Fleet-wide headline strip. Summary before detail: this answers "is the fleet
- * healthy and is it paying for itself" before anyone drills into a vehicle.
+ * Headline row. Reads left to right as one sentence: how big the fleet is,
+ * how much of it is working, what it costs, what it produced, and whether it
+ * came out ahead.
  */
 export default function FleetOverview({ totals }) {
-  const statusCells = [
-    { key: 'active', label: 'Moving', severity: 'good' },
-    { key: 'idle', label: 'Idle', severity: 'warning' },
-    { key: 'maintenance', label: 'Workshop', severity: 'serious' },
-    { key: 'offline', label: 'Offline', severity: 'neutral' },
+  const states = [
+    { key: 'active', label: 'moving', tone: 'ok' },
+    { key: 'idle', label: 'idle', tone: 'warn' },
+    { key: 'maintenance', label: 'workshop', tone: 'danger' },
+    { key: 'offline', label: 'offline', tone: 'neutral' },
   ];
 
+  const profitable = totals.netContribution >= 0;
+
   return (
-    <div className="kpi-strip">
+    <div className="kpis">
       <div className="kpi">
-        <span className="label">Fleet</span>
-        <span className="kpi__val">{totals.total}</span>
-        <div className="kpi__breakdown">
-          {statusCells.map((c) => (
-            <span key={c.key} title={c.label}>
-              <i
-                style={{
-                  width: 7, height: 7, borderRadius: '50%',
-                  background: SEVERITY_COLOR[c.severity], display: 'inline-block',
-                }}
-              />
-              {totals[c.key]} {c.label}
+        <span className="kpi__label">Fleet status</span>
+        <span className="kpi__value">{totals.total}<small>vehicles</small></span>
+        <div className="statusdots">
+          {states.map((s) => (
+            <span key={s.key}>
+              <i style={{ background: STATUS_COLOR[s.tone] }} />
+              <b>{totals[s.key]}</b> {s.label}
             </span>
           ))}
         </div>
       </div>
 
       <div className="kpi">
-        <span className="label">Utilisation</span>
-        <span className="kpi__val">{num(totals.utilisationPct, 0)}%</span>
-        <span className="kpi__sub">of fleet currently moving</span>
-      </div>
-
-      <div className="kpi">
-        <span className="label">Fuel cost · 30d</span>
-        <span className="kpi__val">{rsCompact(totals.fuelCost)}</span>
-        <span className="kpi__sub">
-          maintenance {rsCompact(totals.maintenanceCost)}
+        <span className="kpi__label">In use right now</span>
+        <span className="kpi__value">{num(totals.utilisationPct, 0)}<small>%</small></span>
+        <span className="kpi__foot">
+          {totals.active} of {totals.total} vehicles on the move
         </span>
       </div>
 
       <div className="kpi">
-        <span className="label">Distance · 30d</span>
-        <span className="kpi__val">{kmCompact(totals.distanceKm)}</span>
-        <span className="kpi__sub">{int(totals.deliveries)} deliveries</span>
+        <span className="kpi__label">Fuel spend · last 30 days</span>
+        <span className="kpi__value">{rsCompact(totals.fuelCost)}</span>
+        <span className="kpi__foot">
+          plus {rsCompact(totals.maintenanceCost)} maintenance &amp; repairs
+        </span>
       </div>
 
       <div className="kpi">
-        <span className="label">Cost per km</span>
-        <span className="kpi__val">Rs {num(totals.costPerKm, 1)}</span>
-        <span className="kpi__sub">all-in, fleet average</span>
+        <span className="kpi__label">Distance · last 30 days</span>
+        <span className="kpi__value">{kmCompact(totals.distanceKm)}</span>
+        <span className="kpi__foot">{int(totals.deliveries)} deliveries completed</span>
       </div>
 
       <div className="kpi">
-        <span className="label">Net contribution · 30d</span>
+        <span className="kpi__label">Cost per kilometre</span>
+        <span className="kpi__value">Rs {num(totals.costPerKm, 1)}</span>
+        <span className="kpi__foot">everything included, fleet average</span>
+      </div>
+
+      <div className="kpi">
+        <span className="kpi__label">Net contribution · last 30 days</span>
         <span
-          className="kpi__val"
-          style={{ color: totals.netContribution >= 0 ? 'var(--good)' : 'var(--critical)' }}
+          className="kpi__value"
+          style={{ color: profitable ? 'var(--ok)' : 'var(--danger)' }}
         >
           {rsCompact(totals.netContribution)}
         </span>
-        <span className="kpi__sub">
-          {rsCompact(totals.businessValue)} value − {rsCompact(totals.totalCost)} cost
+        <span className="kpi__foot">
+          {rsCompact(totals.businessValue)} earned − {rsCompact(totals.totalCost)} spent
         </span>
       </div>
     </div>

@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * km/L across fill-ups, against the vehicle's own baseline.
+ * km/L across fill-ups against the vehicle's own baseline.
  *
- * One series, so no legend box — the title names it. The baseline is a
- * reference rule rather than a second series, points below it are marked, and
- * the endpoint is emphasised because "where are we now" is the question.
+ * One series, so no legend — the section title names it. The baseline is a
+ * reference rule rather than a second series, points that fall well under it
+ * are ringed red, and the endpoint is emphasised because "where are we now" is
+ * the question being asked.
  */
-export default function EfficiencyTrend({ rows, baseline, height = 132 }) {
+export default function EfficiencyTrend({ rows, baseline, height = 170 }) {
   const wrapRef = useRef(null);
-  const [width, setWidth] = useState(320);
+  const [width, setWidth] = useState(420);
   const [hover, setHover] = useState(null);
 
   useEffect(() => {
@@ -21,50 +22,48 @@ export default function EfficiencyTrend({ rows, baseline, height = 132 }) {
     return () => ro.disconnect();
   }, []);
 
-  const measured = rows.filter((r) => r.kmpl !== null);
-  if (measured.length < 2) {
+  const data = rows.filter((r) => r.kmpl !== null);
+
+  if (data.length < 2) {
     return (
       <div ref={wrapRef}>
-        <p className="empty">Two fill-ups are needed before efficiency can be measured.</p>
+        <p className="empty">
+          Two fill-ups are needed before fuel economy can be measured.
+        </p>
       </div>
     );
   }
 
-  const padL = 34;
-  const padR = 12;
-  const padT = 12;
-  const padB = 24;
-  const plotW = Math.max(40, width - padL - padR);
+  const padL = 42;
+  const padR = 14;
+  const padT = 14;
+  const padB = 30;
+  const plotW = Math.max(60, width - padL - padR);
   const plotH = height - padT - padB;
 
-  const values = measured.map((r) => r.kmpl).concat([baseline]);
-  let min = Math.min(...values);
-  let max = Math.max(...values);
-  const span = max - min || 1;
-  min = Math.max(0, min - span * 0.25);
-  max = max + span * 0.25;
+  const values = data.map((r) => r.kmpl).concat([baseline]);
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const span = hi - lo || 1;
+  const min = Math.max(0, lo - span * 0.3);
+  const max = hi + span * 0.3;
 
-  const xAt = (i) => padL + (i / (measured.length - 1)) * plotW;
+  const xAt = (i) => padL + (i / (data.length - 1)) * plotW;
   const yAt = (v) => padT + (1 - (v - min) / (max - min)) * plotH;
 
-  const linePath = measured
+  const line = data
     .map((r, i) => `${i === 0 ? 'M' : 'L'}${xAt(i).toFixed(1)},${yAt(r.kmpl).toFixed(1)}`)
     .join(' ');
-
-  const areaPath =
-    `${linePath} L${xAt(measured.length - 1).toFixed(1)},${(padT + plotH).toFixed(1)} ` +
-    `L${xAt(0).toFixed(1)},${(padT + plotH).toFixed(1)} Z`;
+  const area = `${line} L${xAt(data.length - 1).toFixed(1)},${padT + plotH} L${xAt(0).toFixed(1)},${padT + plotH} Z`;
 
   const ticks = [min, (min + max) / 2, max];
+  const last = data[data.length - 1];
 
-  function handleMove(e) {
+  function move(e) {
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const i = Math.round(((x - padL) / plotW) * (measured.length - 1));
-    setHover(i >= 0 && i < measured.length ? i : null);
+    const i = Math.round(((e.clientX - rect.left - padL) / plotW) * (data.length - 1));
+    setHover(i >= 0 && i < data.length ? i : null);
   }
-
-  const last = measured[measured.length - 1];
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
@@ -72,62 +71,61 @@ export default function EfficiencyTrend({ rows, baseline, height = 132 }) {
         width={width}
         height={height}
         role="img"
-        aria-label={`Fuel efficiency across ${measured.length} fill-ups, latest ${last.kmpl.toFixed(2)} kilometres per litre against a baseline of ${baseline}`}
-        onMouseMove={handleMove}
+        aria-label={`Fuel economy across ${data.length} fill-ups. Latest ${last.kmpl.toFixed(2)} km per litre against a normal of ${baseline}.`}
+        onMouseMove={move}
         onMouseLeave={() => setHover(null)}
-        style={{ display: 'block', overflow: 'visible' }}
+        style={{ display: 'block' }}
       >
-        {/* y grid */}
+        <defs>
+          <linearGradient id="effFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+
         {ticks.map((t, i) => (
           <g key={i}>
-            <line
-              x1={padL} x2={padL + plotW} y1={yAt(t)} y2={yAt(t)}
-              stroke="var(--rule)" strokeWidth="1"
-            />
+            <line x1={padL} x2={padL + plotW} y1={yAt(t)} y2={yAt(t)} stroke="var(--border)" />
             <text
-              x={padL - 6} y={yAt(t) + 3} textAnchor="end"
-              fontSize="9" fill="var(--ink-3)" fontFamily="var(--mono)"
+              x={padL - 8} y={yAt(t) + 4} textAnchor="end"
+              fontSize="11" fill="var(--text-3)" fontFamily="var(--mono)"
             >
               {t.toFixed(1)}
             </text>
           </g>
         ))}
 
-        {/* baseline reference */}
         <line
           x1={padL} x2={padL + plotW} y1={yAt(baseline)} y2={yAt(baseline)}
-          stroke="var(--ink-2)" strokeWidth="1.5" strokeDasharray="4 3"
+          stroke="var(--text-2)" strokeWidth="1.5" strokeDasharray="5 4"
         />
         <text
-          x={padL + plotW} y={yAt(baseline) - 4} textAnchor="end"
-          fontSize="9" fill="var(--ink-2)" fontFamily="var(--mono)"
+          x={padL + plotW} y={yAt(baseline) - 6} textAnchor="end"
+          fontSize="11" fill="var(--text-2)" fontFamily="var(--mono)"
         >
-          baseline {baseline}
+          normal {baseline}
         </text>
 
-        <path d={areaPath} fill="var(--accent)" opacity="0.09" />
-        <path d={linePath} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={area} fill="url(#effFill)" />
+        <path
+          d={line} fill="none" stroke="var(--primary)" strokeWidth="2.5"
+          strokeLinejoin="round" strokeLinecap="round"
+        />
 
-        {measured.map((r, i) => {
-          const below = r.kmpl < baseline * 0.88;
-          const isLast = i === measured.length - 1;
+        {data.map((r, i) => {
+          const bad = r.kmpl < baseline * 0.88;
+          const isLast = i === data.length - 1;
           return (
             <g key={r.id}>
               <circle
-                cx={xAt(i)} cy={yAt(r.kmpl)} r={isLast ? 4.5 : 3.5}
-                fill={isLast ? 'var(--accent)' : 'var(--surface)'}
-                stroke={below ? 'var(--critical)' : 'var(--accent)'}
-                strokeWidth="2"
-              />
-              {/* generous invisible hit target */}
-              <rect
-                x={xAt(i) - plotW / (measured.length * 2)} y={padT}
-                width={plotW / measured.length} height={plotH}
-                fill="transparent"
+                cx={xAt(i)} cy={yAt(r.kmpl)} r={isLast ? 5.5 : 4}
+                fill={isLast ? 'var(--primary)' : 'var(--surface)'}
+                stroke={bad ? 'var(--danger)' : 'var(--primary)'}
+                strokeWidth="2.5"
               />
               <text
-                x={xAt(i)} y={height - 6} textAnchor="middle"
-                fontSize="9" fill="var(--ink-3)" fontFamily="var(--mono)"
+                x={xAt(i)} y={height - 9} textAnchor="middle"
+                fontSize="11" fill="var(--text-3)" fontFamily="var(--mono)"
               >
                 {r.date.slice(5)}
               </text>
@@ -138,7 +136,7 @@ export default function EfficiencyTrend({ rows, baseline, height = 132 }) {
         {hover !== null && (
           <line
             x1={xAt(hover)} x2={xAt(hover)} y1={padT} y2={padT + plotH}
-            stroke="var(--ink-3)" strokeWidth="1" strokeDasharray="2 2"
+            stroke="var(--text-3)" strokeDasharray="3 3"
           />
         )}
       </svg>
@@ -147,27 +145,32 @@ export default function EfficiencyTrend({ rows, baseline, height = 132 }) {
         <div
           style={{
             position: 'absolute',
-            left: Math.min(Math.max(xAt(hover) - 70, 0), Math.max(0, width - 148)),
-            top: 0,
-            width: 148,
-            background: 'var(--surface-raised)',
-            border: '1px solid var(--rule-strong)',
-            borderRadius: 3,
-            padding: '7px 9px',
+            left: Math.min(Math.max(xAt(hover) - 80, 0), Math.max(0, width - 168)),
+            top: 4,
+            width: 168,
+            background: 'var(--surface)',
+            border: '1px solid var(--border-strong)',
+            borderRadius: 'var(--r-sm)',
+            padding: '9px 11px',
             pointerEvents: 'none',
-            boxShadow: 'var(--shadow)',
-            fontSize: 11,
+            boxShadow: 'var(--shadow-lg)',
+            fontSize: 12,
           }}
         >
-          <div className="n" style={{ fontWeight: 700 }}>{measured[hover].date}</div>
-          <div className="n">{measured[hover].kmpl.toFixed(2)} km/L</div>
-          <div className="n faint">{measured[hover].dist} km · {measured[hover].litres} L</div>
+          <div className="n" style={{ fontWeight: 700, marginBottom: 2 }}>{data[hover].date}</div>
+          <div className="n" style={{ fontSize: 15, fontWeight: 600 }}>
+            {data[hover].kmpl.toFixed(2)} km/L
+          </div>
+          <div className="n faint">{data[hover].dist} km on {data[hover].litres} L</div>
           <div
             className="n"
-            style={{ color: measured[hover].deviationPct < -12 ? 'var(--critical)' : 'var(--ink-2)' }}
+            style={{
+              color: data[hover].deviationPct < -12 ? 'var(--danger)' : 'var(--text-2)',
+              marginTop: 2,
+            }}
           >
-            {measured[hover].deviationPct > 0 ? '+' : ''}
-            {measured[hover].deviationPct.toFixed(1)}% vs baseline
+            {data[hover].deviationPct > 0 ? '+' : ''}
+            {data[hover].deviationPct.toFixed(1)}% vs normal
           </div>
         </div>
       )}

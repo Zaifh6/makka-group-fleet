@@ -20,12 +20,12 @@ import VehicleRoster from './components/VehicleRoster.jsx';
 import AlertStream from './components/AlertStream.jsx';
 import VehicleDetail from './components/VehicleDetail.jsx';
 import FleetEconomics from './components/FleetEconomics.jsx';
-import { Panel, SEVERITY_COLOR } from './components/ui.jsx';
+import { Panel, STATUS_COLOR } from './components/ui.jsx';
 
 export default function App() {
   const [selectedId, setSelectedId] = useState(VEHICLES[0].id);
   const [fuelLogs, setFuelLogs] = useState(FUEL_LOGS);
-  const [alertFilter, setAlertFilter] = useState('all');
+  const [alertFilter, setAlertFilter] = useState('action');
 
   const {
     frames, framesById, eventLog, simTime,
@@ -123,15 +123,17 @@ export default function App() {
       <div className="layout">
         <section className="panel">
           <header className="panel__head">
-            <h2 className="panel__title">Live fleet map</h2>
-            <span className="panel__meta">
-              Peshawar &amp; Mardan · {frames.length} units reporting
-            </span>
+            <div>
+              <h2 className="panel__title">Where the fleet is</h2>
+              <div className="panel__sub">
+                Peshawar &amp; Mardan · shaded areas are delivery zones · click a vehicle
+              </div>
+            </div>
+            <span className="panel__meta">{frames.length} units reporting</span>
           </header>
 
           <FleetMap
             vehicles={VEHICLES}
-            frames={frames}
             framesById={framesById}
             selectedId={selectedId}
             onSelect={selectVehicle}
@@ -139,35 +141,31 @@ export default function App() {
 
           <div className="map-legend">
             {[
-              ['good', 'Moving'],
-              ['warning', 'Idling'],
+              ['ok', 'Moving'],
+              ['warn', 'Idling'],
               ['info', 'Stopped'],
-              ['serious', 'In workshop'],
+              ['danger', 'In workshop'],
               ['neutral', 'Offline'],
-            ].map(([sev, label]) => (
-              <span className="map-legend__item" key={sev}>
-                <i className="map-legend__dot" style={{ background: SEVERITY_COLOR[sev] }} />
+            ].map(([tone, label]) => (
+              <span key={tone}>
+                <i style={{ background: STATUS_COLOR[tone] }} />
                 {label}
               </span>
             ))}
-            <span className="map-legend__item">
-              <i className="map-legend__line" style={{ background: 'var(--accent)' }} />
-              Selected vehicle trail
+            <span>
+              <i style={{ background: '#3b82f6', borderRadius: 2, width: 16, height: 3 }} />
+              Today's route for the selected vehicle
             </span>
-            <span className="map-legend__item">
-              <i className="map-legend__line" style={{ background: 'var(--ink-3)', opacity: 0.5 }} />
-              Assigned routes
-            </span>
-            <span className="map-legend__item faint">Click a marker to inspect</span>
           </div>
-
-          <ZoneOccupancy occupancy={occupancy} onSelectVehicle={selectVehicle} />
         </section>
 
         <section className="panel">
           <header className="panel__head">
-            <h2 className="panel__title">Fleet roster</h2>
-            <span className="panel__meta">{VEHICLES.length} vehicles</span>
+            <div>
+              <h2 className="panel__title">Vehicles</h2>
+              <div className="panel__sub">Click one to see its full record below</div>
+            </div>
+            <span className="panel__meta">{VEHICLES.length} total</span>
           </header>
           <VehicleRoster
             vehicles={VEHICLES}
@@ -178,6 +176,13 @@ export default function App() {
           />
         </section>
       </div>
+
+      <Panel
+        title="Vehicles by area"
+        subtitle="How many units are inside each business area right now"
+      >
+        <ZoneOccupancy occupancy={occupancy} onSelectVehicle={selectVehicle} />
+      </Panel>
 
       <div className="layout">
         <VehicleDetail
@@ -195,7 +200,10 @@ export default function App() {
 
         <section className="panel">
           <header className="panel__head">
-            <h2 className="panel__title">Alerts &amp; auto logs</h2>
+            <div>
+              <h2 className="panel__title">Alerts</h2>
+              <div className="panel__sub">Logged automatically from telemetry and records</div>
+            </div>
             <span className="panel__meta">{allAlerts.length} open</span>
           </header>
           <AlertStream
@@ -209,8 +217,8 @@ export default function App() {
       </div>
 
       <Panel
-        title="Fleet economics"
-        meta="Rolling 30 days · owned vs outsourced"
+        title="Is the fleet paying for itself?"
+        subtitle="Owned versus outsourced, and every vehicle ranked by what it contributes"
       >
         <FleetEconomics
           comparison={comparison}

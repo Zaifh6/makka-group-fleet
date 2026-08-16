@@ -1,277 +1,210 @@
 import { useEffect, useRef } from 'react';
-import { ZONES, MAP_BOUNDS } from '../data/geofences.js';
-import { ROUTES } from '../data/routes.js';
-import { SEVERITY_COLOR, vehicleStatus } from './ui.jsx';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { ZONES } from '../data/geofences.js';
+import { STATUS_COLOR, vehicleStatus } from './ui.jsx';
 
 /**
- * Canvas fleet map.
+ * Real slippy map over OpenStreetMap data.
  *
- * Deliberately not a tile map — the pilot is about *business areas*, so the
- * geofence polygons are the basemap and roads are irrelevant. Swapping in
- * Mapbox later means replacing the draw calls; the projection and hit-testing
- * below already work in real lat/lng.
+ * Tiles come from CARTO's OSM basemaps — no API key, no billing account, and a
+ * light/dark pair that matches the dashboard theme. Google Maps would need a
+ * billed API key; the layer URL below is the only line that changes if you get
+ * one (see README).
+ *
+ * Everything is drawn in true WGS-84 lat/lng, so this is real geography: the
+ * geofence polygons sit on the actual districts and the vehicles drive real
+ * roads around Peshawar and Mardan.
  */
 
-const ASPECT = 0.70; // height / width, matched to the bounds' true ground ratio
-
-function project(lat, lng, w, h) {
-  const { minLat, maxLat, minLng, maxLng } = MAP_BOUNDS;
-  return {
-    x: ((lng - minLng) / (maxLng - minLng)) * w,
-    y: ((maxLat - lat) / (maxLat - minLat)) * h,
-  };
-}
-
-function unproject(x, y, w, h) {
-  const { minLat, maxLat, minLng, maxLng } = MAP_BOUNDS;
-  return {
-    lng: minLng + (x / w) * (maxLng - minLng),
-    lat: maxLat - (y / h) * (maxLat - minLat),
-  };
-}
-
-const ZONE_TINT = {
-  DISTRIBUTION: '--accent-soft',
-  DELIVERY: '--info-soft',
-  TRANSIT: '--surface-sunken',
-  RESTRICTED: '--critical-soft',
+const TILES = {
+  light: {
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  },
+  dark: {
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  },
 };
 
-export default function FleetMap({ vehicles, frames, framesById, selectedId, onSelect }) {
-  const canvasRef = useRef(null);
-  const stateRef = useRef({ vehicles, frames, framesById, selectedId });
-  stateRef.current = { vehicles, frames, framesById, selectedId };
+const ZONE_STYLE = {
+  DISTRIBUTION: { color: '#2563eb', fillOpacity: 0.10 },
+  DELIVERY:     { color: '#0891b2', fillOpacity: 0.09 },
+  TRANSIT:      { color: '#64748b', fillOpacity: 0.06, dashArray: '6 5' },
+  RESTRICTED:   { color: '#b91c1c', fillOpacity: 0.16, dashArray: '4 4' },
+};
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    let width = 0;
-    let height = 0;
-
-    const cssVar = (name) =>
-      getComputedStyle(canvas).getPropertyValue(name).trim() || '#888';
-
-    function resize() {
-      const rect = canvas.getBoundingClientRect();
-      width = rect.width;
-      height = Math.round(rect.width * ASPECT);
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.style.height = height + 'px';
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      const ctx = canvas.getContext('2d');
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      draw();
-    }
-
-    function draw() {
-      const ctx = canvas.getContext('2d');
-      if (!width || !height) return;
-      const { vehicles: vs, framesById: byId, selectedId: sel } = stateRef.current;
-
-      const ink = cssVar('--ink');
-      const ink2 = cssVar('--ink-2');
-      const ink3 = cssVar('--ink-3');
-      const rule = cssVar('--rule');
-      const accent = cssVar('--accent');
-      const surface = cssVar('--surface-raised');
-
-      ctx.clearRect(0, 0, width, height);
-      ctx.fillStyle = surface;
-      ctx.fillRect(0, 0, width, height);
-
-      // --- graticule -----------------------------------------------------
-      ctx.strokeStyle = rule;
-      ctx.lineWidth = 1;
-      ctx.globalAlpha = 0.55;
-      for (let i = 1; i < 8; i++) {
-        const x = (width / 8) * i;
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
-      }
-      for (let i = 1; i < 6; i++) {
-        const y = (height / 6) * i;
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-
-      // --- geofence zones -------------------------------------------------
-      for (const zone of ZONES) {
-        const pts = zone.polygon.map(([lat, lng]) => project(lat, lng, width, height));
-        ctx.beginPath();
-        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-        ctx.closePath();
-
-        ctx.fillStyle = cssVar(ZONE_TINT[zone.kind] || '--surface-sunken');
-        ctx.fill();
-
-        // Restricted areas get hatching so they read without relying on hue.
-        if (zone.kind === 'RESTRICTED') {
-          ctx.save();
-          ctx.clip();
-          ctx.strokeStyle = cssVar('--critical');
-          ctx.globalAlpha = 0.35;
-          ctx.lineWidth = 1;
-          const minX = Math.min(...pts.map((p) => p.x));
-          const maxX = Math.max(...pts.map((p) => p.x));
-          const minY = Math.min(...pts.map((p) => p.y));
-          const maxY = Math.max(...pts.map((p) => p.y));
-          for (let d = minX - (maxY - minY); d < maxX; d += 6) {
-            ctx.beginPath();
-            ctx.moveTo(d, minY);
-            ctx.lineTo(d + (maxY - minY), maxY);
-            ctx.stroke();
-          }
-          ctx.restore();
-          ctx.globalAlpha = 1;
-        }
-
-        ctx.strokeStyle = zone.kind === 'RESTRICTED' ? cssVar('--critical') : cssVar('--rule-strong');
-        ctx.lineWidth = zone.kind === 'RESTRICTED' ? 1.5 : 1;
-        ctx.setLineDash(zone.kind === 'TRANSIT' ? [4, 3] : []);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // label at the polygon centroid
-        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
-        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
-        ctx.fillStyle = ink2;
-        ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(zone.name.toUpperCase(), cx, cy);
-      }
-
-      // --- routes ----------------------------------------------------------
-      ctx.strokeStyle = ink3;
-      ctx.globalAlpha = 0.35;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([3, 4]);
-      for (const route of Object.values(ROUTES)) {
-        ctx.beginPath();
-        route.points.forEach((p, i) => {
-          const q = project(p.lat, p.lng, width, height);
-          i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y);
-        });
-        ctx.closePath();
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
-
-      // --- selected vehicle's trail ----------------------------------------
-      const selFrame = sel ? byId[sel] : null;
-      if (selFrame && selFrame.trail && selFrame.trail.length > 1) {
-        ctx.strokeStyle = accent;
-        ctx.lineWidth = 2.5;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        selFrame.trail.forEach((p, i) => {
-          const q = project(p.lat, p.lng, width, height);
-          i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y);
-        });
-        ctx.stroke();
-      }
-
-      // --- vehicle markers --------------------------------------------------
-      for (const v of vs) {
-        const f = byId[v.id];
-        if (!f) continue;
-        const p = project(f.latitude, f.longitude, width, height);
-        const status = vehicleStatus(v, f);
-        const color = SEVERITY_COLOR[status.severity];
-        const isSelected = v.id === sel;
-
-        if (isSelected) {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 13, 0, Math.PI * 2);
-          ctx.strokeStyle = accent;
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-
-        // Heading wedge for anything actually moving.
-        if (f.speed > 1) {
-          const rad = ((f.heading - 90) * Math.PI) / 180;
-          ctx.beginPath();
-          ctx.moveTo(p.x, p.y);
-          ctx.lineTo(p.x + Math.cos(rad) * 16, p.y + Math.sin(rad) * 16);
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, isSelected ? 7 : 5.5, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
-        ctx.strokeStyle = surface;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Label the selected vehicle only — otherwise the map turns to soup.
-        if (isSelected) {
-          const text = `${v.id}  ${f.speed} km/h`;
-          ctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, monospace';
-          ctx.textAlign = 'left';
-          const w = ctx.measureText(text).width;
-          const lx = Math.min(p.x + 14, width - w - 10);
-          const ly = Math.max(14, p.y - 12);
-          ctx.fillStyle = surface;
-          ctx.globalAlpha = 0.92;
-          ctx.fillRect(lx - 4, ly - 10, w + 8, 15);
-          ctx.globalAlpha = 1;
-          ctx.strokeStyle = accent;
-          ctx.lineWidth = 1;
-          ctx.strokeRect(lx - 4, ly - 10, w + 8, 15);
-          ctx.fillStyle = ink;
-          ctx.fillText(text, lx, ly + 1);
-        }
-      }
-
-      ctx.textAlign = 'left';
-    }
-
-    function handleClick(e) {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const { vehicles: vs, framesById: byId } = stateRef.current;
-
-      let best = null;
-      let bestDist = Infinity;
-      for (const v of vs) {
-        const f = byId[v.id];
-        if (!f) continue;
-        const p = project(f.latitude, f.longitude, rect.width, rect.width * ASPECT);
-        const d = Math.hypot(p.x - x, p.y - y);
-        if (d < bestDist) { bestDist = d; best = v.id; }
-      }
-      if (best && bestDist < 22) onSelect(best);
-    }
-
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-    canvas.addEventListener('click', handleClick);
-    resize();
-
-    // Redraw whenever new telemetry lands.
-    const id = setInterval(draw, 250);
-
-    return () => {
-      observer.disconnect();
-      canvas.removeEventListener('click', handleClick);
-      clearInterval(id);
-    };
-  }, [onSelect]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="map-canvas"
-      aria-label="Live fleet map showing vehicle positions across Peshawar and Mardan business areas"
-    />
-  );
+function isDark() {
+  const attr = document.documentElement.getAttribute('data-theme');
+  if (attr === 'dark') return true;
+  if (attr === 'light') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
-export { project, unproject };
+function markerHtml(vehicle, frame, color, selected) {
+  const label = selected
+    ? `<span class="vmarker__label">${vehicle.id} · ${frame.speed} km/h</span>`
+    : '';
+  return `<div class="vmarker ${selected ? 'vmarker--selected' : ''}">
+    ${label}<span class="vmarker__dot" style="background:${color}"></span>
+  </div>`;
+}
+
+function popupHtml(vehicle, frame) {
+  return `
+    <div class="popup__id">${vehicle.id}</div>
+    <div class="popup__row"><span>${vehicle.make} ${vehicle.model}</span></div>
+    <div class="popup__row"><span>Speed</span><b>${frame.speed} km/h</b></div>
+    <div class="popup__row"><span>Area</span><b>${frame.zoneName}</b></div>
+    <div class="popup__row"><span>Driver</span><b>${vehicle.driver.name}</b></div>
+    <div class="popup__row"><span>Odometer</span><b>${frame.odometer.toLocaleString()} km</b></div>
+  `;
+}
+
+export default function FleetMap({ vehicles, framesById, selectedId, onSelect }) {
+  const nodeRef = useRef(null);
+  const mapRef = useRef(null);
+  const tileRef = useRef(null);
+  const markersRef = useRef(new Map());
+  const trailRef = useRef(null);
+  const themeRef = useRef(null);
+
+  // Latest props for callbacks that must not re-bind the whole map.
+  const propsRef = useRef({ vehicles, framesById, selectedId, onSelect });
+  propsRef.current = { vehicles, framesById, selectedId, onSelect };
+
+  /* --- create the map once ------------------------------------------- */
+  useEffect(() => {
+    const map = L.map(nodeRef.current, {
+      center: [34.12, 71.74],
+      zoom: 10,
+      zoomControl: true,
+      attributionControl: true,
+    });
+    mapRef.current = map;
+
+    const dark = isDark();
+    themeRef.current = dark;
+    tileRef.current = L.tileLayer(dark ? TILES.dark.url : TILES.light.url, {
+      attribution: dark ? TILES.dark.attribution : TILES.light.attribution,
+      maxZoom: 19,
+      subdomains: 'abcd',
+    }).addTo(map);
+
+    // Business areas
+    for (const zone of ZONES) {
+      const style = ZONE_STYLE[zone.kind] || ZONE_STYLE.TRANSIT;
+      L.polygon(zone.polygon, {
+        color: style.color,
+        weight: 1.5,
+        fillColor: style.color,
+        fillOpacity: style.fillOpacity,
+        dashArray: style.dashArray,
+        interactive: false,
+      })
+        .addTo(map)
+        .bindTooltip(`${zone.name} · ${zone.region}`, {
+          permanent: false,
+          direction: 'center',
+          className: 'zone-tooltip',
+        });
+    }
+
+    // Fit to the whole service territory.
+    const bounds = L.latLngBounds(ZONES.flatMap((z) => z.polygon));
+    map.fitBounds(bounds, { padding: [28, 28] });
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      markersRef.current.clear();
+    };
+  }, []);
+
+  /* --- follow the theme ------------------------------------------------ */
+  useEffect(() => {
+    const apply = () => {
+      const map = mapRef.current;
+      if (!map || !tileRef.current) return;
+      const dark = isDark();
+      if (dark === themeRef.current) return;
+      themeRef.current = dark;
+      tileRef.current.setUrl(dark ? TILES.dark.url : TILES.light.url);
+    };
+
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    mq.addEventListener('change', apply);
+    const observer = new MutationObserver(apply);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => {
+      mq.removeEventListener('change', apply);
+      observer.disconnect();
+    };
+  }, []);
+
+  /* --- sync markers + trail on every telemetry frame ------------------- */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    for (const vehicle of vehicles) {
+      const frame = framesById[vehicle.id];
+      if (!frame) continue;
+
+      const status = vehicleStatus(vehicle, frame);
+      const color = STATUS_COLOR[status.tone];
+      const selected = vehicle.id === selectedId;
+      const pos = [frame.latitude, frame.longitude];
+
+      let marker = markersRef.current.get(vehicle.id);
+      if (!marker) {
+        marker = L.marker(pos, {
+          icon: L.divIcon({
+            className: 'vmarker-wrap',
+            html: markerHtml(vehicle, frame, color, selected),
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          }),
+          title: vehicle.id,
+          riseOnHover: true,
+        }).addTo(map);
+        marker.on('click', () => propsRef.current.onSelect(vehicle.id));
+        markersRef.current.set(vehicle.id, marker);
+      } else {
+        marker.setLatLng(pos);
+        marker.setIcon(
+          L.divIcon({
+            className: 'vmarker-wrap',
+            html: markerHtml(vehicle, frame, color, selected),
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+          })
+        );
+      }
+      marker.bindPopup(popupHtml(vehicle, frame));
+    }
+
+    // Trail of where the selected vehicle has actually been.
+    const selFrame = framesById[selectedId];
+    const points = selFrame?.trail?.map((p) => [p.lat, p.lng]) || [];
+    if (points.length > 1) {
+      if (!trailRef.current) {
+        trailRef.current = L.polyline(points, {
+          color: '#3b82f6', // legible on both the light and dark basemaps
+          weight: 3.5,
+          opacity: 0.85,
+          lineJoin: 'round',
+        }).addTo(map);
+      } else {
+        trailRef.current.setLatLngs(points);
+      }
+    } else if (trailRef.current) {
+      trailRef.current.setLatLngs([]);
+    }
+  }, [vehicles, framesById, selectedId]);
+
+  return <div ref={nodeRef} className="map" aria-label="Live fleet map" />;
+}

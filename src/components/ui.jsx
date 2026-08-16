@@ -1,21 +1,39 @@
-/** Small shared primitives so panels stay consistent across the dashboard. */
+/** Shared primitives. One vocabulary of tones across every panel. */
 
-export const SEVERITY_COLOR = {
-  good: 'var(--good)',
-  info: 'var(--info)',
-  warning: 'var(--warning)',
-  serious: 'var(--serious)',
-  critical: 'var(--critical)',
-  neutral: 'var(--ink-3)',
+/**
+ * Four tones do all the work: ok / warn / danger for state, info for the
+ * interactive primary, neutral for "nothing to say". Alert severities collapse
+ * into these so a badge, a map marker and a table row always agree.
+ */
+export const STATUS_COLOR = {
+  ok: 'var(--ok)',
+  warn: 'var(--warn)',
+  danger: 'var(--danger)',
+  info: 'var(--primary)',
+  neutral: 'var(--text-3)',
 };
 
-export function Panel({ title, meta, children, flush = false, headExtra }) {
+const SEVERITY_TO_TONE = {
+  good: 'ok',
+  info: 'info',
+  warning: 'warn',
+  serious: 'danger',
+  critical: 'danger',
+  neutral: 'neutral',
+};
+
+export const toneFor = (severity) => SEVERITY_TO_TONE[severity] || 'neutral';
+
+export function Panel({ title, subtitle, meta, children, flush = false, action }) {
   return (
     <section className="panel">
-      {(title || meta || headExtra) && (
+      {(title || meta || action) && (
         <header className="panel__head">
-          <h2 className="panel__title">{title}</h2>
-          {headExtra || (meta && <span className="panel__meta">{meta}</span>)}
+          <div>
+            <h2 className="panel__title">{title}</h2>
+            {subtitle && <div className="panel__sub">{subtitle}</div>}
+          </div>
+          {action || (meta && <span className="panel__meta">{meta}</span>)}
         </header>
       )}
       <div className={flush ? 'panel__body panel__body--flush' : 'panel__body'}>{children}</div>
@@ -23,38 +41,44 @@ export function Panel({ title, meta, children, flush = false, headExtra }) {
   );
 }
 
-export function Chip({ severity = 'neutral', children }) {
-  return <span className={`chip chip--${severity}`}>{children}</span>;
+export function Badge({ tone = 'neutral', dot = false, children }) {
+  return (
+    <span className={`badge badge--${tone}`}>
+      {dot && <i />}
+      {children}
+    </span>
+  );
 }
 
-export function KV({ label, value, unit, size, mono = true }) {
+/** A labelled figure. `text` switches off the mono face for names and words. */
+export function Stat({ label, value, unit, size, text = false, tone }) {
   const cls =
-    'kv__val' +
-    (size === 'lg' ? ' kv__val--lg' : '') +
-    (mono ? '' : ' kv__val--serif');
+    'stat__value' +
+    (size === 'lg' ? ' stat__value--lg' : '') +
+    (text ? ' stat__value--text' : '');
   return (
-    <div className="kv__cell">
-      <span className="label">{label}</span>
-      <span className={cls}>
+    <div className="stat">
+      <span className="stat__label">{label}</span>
+      <span className={cls} style={tone ? { color: STATUS_COLOR[tone] } : undefined}>
         {value}
-        {unit && <span className="unit">{unit}</span>}
+        {unit && <small>{unit}</small>}
       </span>
     </div>
   );
 }
 
-/**
- * Efficiency meter — current value against the vehicle's own historical
- * baseline, which is the comparison that actually means something.
- */
-export function Meter({ value, baseline, max, color }) {
-  const ceiling = max ?? Math.max(value, baseline) * 1.35;
-  const pctOf = (v) => Math.max(0, Math.min(100, (v / ceiling) * 100));
+/** Current value against the vehicle's own historical baseline. */
+export function Meter({ value, baseline, tone = 'ok' }) {
+  const ceiling = Math.max(value, baseline) * 1.3 || 1;
+  const at = (v) => Math.max(0, Math.min(100, (v / ceiling) * 100));
   return (
-    <div className="meter">
+    <div>
       <div className="meter__track">
-        <div className="meter__fill" style={{ width: `${pctOf(value)}%`, background: color }} />
-        <div className="meter__baseline" style={{ left: `${pctOf(baseline)}%` }} title="Baseline" />
+        <div
+          className="meter__fill"
+          style={{ width: `${at(value)}%`, background: STATUS_COLOR[tone] }}
+        />
+        <div className="meter__mark" style={{ left: `${at(baseline)}%` }} title="Baseline" />
       </div>
       <div className="meter__scale">
         <span>0</span>
@@ -65,16 +89,16 @@ export function Meter({ value, baseline, max, color }) {
   );
 }
 
-/** Status of a vehicle derived from its service flag plus live telemetry. */
+/** Live state, derived from the service flag plus telemetry. */
 export function vehicleStatus(vehicle, frame) {
   if (vehicle.serviceState === 'MAINTENANCE') {
-    return { key: 'MAINTENANCE', label: 'In workshop', severity: 'serious' };
+    return { key: 'MAINTENANCE', label: 'In workshop', tone: 'danger' };
   }
   if (vehicle.serviceState === 'OFFLINE') {
-    return { key: 'OFFLINE', label: 'Offline', severity: 'neutral' };
+    return { key: 'OFFLINE', label: 'Offline', tone: 'neutral' };
   }
-  if (!frame) return { key: 'PENDING', label: 'Awaiting fix', severity: 'neutral' };
-  if (frame.speed > 1) return { key: 'ACTIVE', label: 'Moving', severity: 'good' };
-  if (frame.ignition) return { key: 'IDLING', label: 'Idling', severity: 'warning' };
-  return { key: 'STOPPED', label: 'Stopped', severity: 'info' };
+  if (!frame) return { key: 'PENDING', label: 'Awaiting fix', tone: 'neutral' };
+  if (frame.speed > 1) return { key: 'ACTIVE', label: 'Moving', tone: 'ok' };
+  if (frame.ignition) return { key: 'IDLING', label: 'Idling', tone: 'warn' };
+  return { key: 'STOPPED', label: 'Stopped', tone: 'info' };
 }

@@ -31,7 +31,7 @@ Requires Node 18+ (developed on Node 24).
 | Area | What it shows |
 |---|---|
 | **Fleet overview** | Vehicle counts by live state, utilisation, 30-day fuel and maintenance cost, distance, all-in cost per km, net contribution |
-| **Live fleet map** | All vehicles moving in real coordinates across Peshawar and Mardan, drawn over geofenced business areas. Click any marker to select it. Selected vehicle draws its route trail |
+| **Live fleet map** | A real OpenStreetMap slippy map of Peshawar and Mardan with vehicles moving along actual roads, geofenced business areas shaded on top. Click any marker to select it; the selected vehicle draws today's route trail |
 | **Zone occupancy** | How many vehicles are inside each business area right now, plus how many are in transit between areas |
 | **Fleet roster** | Every vehicle with live speed, current area, ownership and open-alert count |
 | **Vehicle detail** | Five tabs — Overview, Fuel & efficiency, Maintenance, Economics, Video & clips |
@@ -176,15 +176,57 @@ src/
 3. Move `deriveFuelRows`, `maintenanceStatus` and the geofence test server-side once the
    volume justifies it — `metrics.js` is written as pure functions so the logic ports
    directly.
-4. Swap the canvas map in `FleetMap.jsx` for Mapbox or OpenStreetMap. The projection and
-   hit-testing already work in real lat/lng.
+4. If you want Google Maps specifically, see below — the map is already real, so this is
+   a basemap swap rather than a rewrite.
 
 ---
+
+## The map
+
+`src/components/FleetMap.jsx` uses **Leaflet with real OpenStreetMap data**, served through
+CARTO's basemap CDN. Real streets, real districts, real coordinates — and it works the
+moment you `npm run dev` with **no API key and no billing account**. There is a light and a
+dark basemap, and the map follows the dashboard theme automatically.
+
+**Why not Google Maps.** The Google Maps JavaScript API requires an API key attached to a
+billing-enabled Google Cloud project; without one it renders a watermarked "development
+only" map or fails outright. That would have meant handing you something that doesn't run.
+If you want Google specifically, get a key and swap the tile layer:
+
+```js
+// src/components/FleetMap.jsx — replace the TILES entry
+const TILES = {
+  light: {
+    url: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&key=YOUR_KEY',
+    attribution: '&copy; Google',
+  },
+  // ...
+};
+```
+
+For a production deployment prefer the official `@googlemaps/js-api-loader` with a properly
+restricted key, or Mapbox GL if you want vector tiles. Markers, polygons, popups and the
+trail are all standard lat/lng geometry, so they port to any of these.
+
+## Dashcam footage
+
+There is no camera hardware yet, so `src/data/footage.js` points at real driving clips from
+**Pexels** (free licence, hotlinking allowed, no key). They stream from the CDN and are
+overlaid with the HUD an actual MDVR burns into the frame — channel, timestamp, unit id, GPS
+fix and speed.
+
+Playback rate follows the vehicle's reported speed, and the video pauses when the vehicle
+stops, so the picture always agrees with the telemetry. If a clip can't load the panel shows
+a "stream unavailable" card rather than a black box.
+
+**This needs a network connection.** To run fully offline, drop your own `.mp4` files into
+`public/footage/` and point `CLIPS` at `/footage/yourfile.mp4`. Swapping in real HLS or
+WebRTC stream URLs per channel is the same one-line change.
 
 ## Notes
 
 - Money is PKR. Fuel is priced at Rs 280/L in `src/data/vehicles.js`.
 - Adding a fill-up updates state in memory only — it resets on reload.
 - The theme follows your OS by default; the top bar cycles Auto → Light → Dark.
-- Typography uses system serif, sans and monospace stacks, so there are no font downloads
-  and the app works fully offline.
+- Fonts are **Inter** (interface) and **JetBrains Mono** (every number), self-hosted via
+  `@fontsource`, so there are no Google Fonts requests and text renders identically offline.
