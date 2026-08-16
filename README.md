@@ -36,6 +36,7 @@ Requires Node 18+ (developed on Node 24).
 | **Fleet roster** | Every vehicle with live speed, current area, ownership and open-alert count |
 | **Vehicle detail** | Five tabs — Overview, Fuel & efficiency, Maintenance, Economics, Video & clips |
 | **Alerts & auto logs** | Standing conditions (fuel anomalies, overdue service, low tank) merged with the live event stream (harsh braking, overspeed, geofence transitions, unauthorised areas) |
+| **Ask the fleet** | A chat assistant you can question in plain English about any vehicle, driver, area or cost. Answers are computed from live state, not canned |
 | **Fleet economics** | Owned vs outsourced comparison and a net-contribution ranking across the fleet |
 
 ### Vehicle detail tabs
@@ -214,6 +215,44 @@ const TILES = {
 For a production deployment prefer the official `@googlemaps/js-api-loader` with a properly
 restricted key, or Mapbox GL if you want vector tiles. Markers, polygons, popups and the
 trail are all standard lat/lng geometry, so they port to any of these.
+
+## The assistant
+
+`src/sim/assistant.js` answers questions in plain English. **There is no model and no API
+key** — it matches the question against a set of intents, extracts the entity, and then
+*computes the answer from live state*: the same telemetry frames, fuel logs and maintenance
+records the panels render.
+
+That distinction matters for the demo. Ask "where is MK-TRUCK-023" twice a minute apart and
+you get two different answers, because it reads the current frame rather than replaying a
+canned string. Ask about fuel and it recalculates the deviation against that vehicle's own
+baseline. Log a new fill-up and the next answer reflects it.
+
+It resolves a vehicle from an id (`MK-TRUCK-023`), a loose number (`truck 52`, `007`), a
+registration plate (`LES-4471`) or a driver's name (`Gul Rehman`) — and falls back to
+whichever vehicle is currently selected. Naming a vehicle in an answer also selects it on
+the map.
+
+What it covers:
+
+| Ask about | Example |
+|---|---|
+| Priorities | *What needs my attention?* |
+| Live position | *Where is MK-TRUCK-052?* |
+| Fuel & economy | *How is 007 on fuel?* |
+| Fraud checks | *Show me fuel anomalies* |
+| Servicing | *Does LES-4471 need service?* |
+| Cost & value | *What is MK-TRUCK-031 costing us?* |
+| Strategy | *Is owning cheaper than outsourcing?* |
+| Areas | *How many vehicles are in Mardan?* |
+| Drivers | *Who is driving MK-TRUCK-018?* |
+
+Suggested questions appear as chips, and each answer offers contextual follow-ups.
+Unrecognised input gets an honest "I couldn't match that" rather than a guess.
+
+**Swapping in a real LLM** means replacing `ask()` with a call that passes this same context
+object as tool results. The answer shape — `{ lead, facts, note, focus, followUps }` — and
+the whole UI stay as they are.
 
 ## Dashcam footage
 

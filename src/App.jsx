@@ -20,6 +20,7 @@ import VehicleRoster from './components/VehicleRoster.jsx';
 import AlertStream from './components/AlertStream.jsx';
 import VehicleDetail from './components/VehicleDetail.jsx';
 import FleetEconomics from './components/FleetEconomics.jsx';
+import Assistant from './components/Assistant.jsx';
 import { Panel, STATUS_COLOR } from './components/ui.jsx';
 
 export default function App() {
@@ -73,8 +74,33 @@ export default function App() {
 
   const clips = useMemo(() => clipsFromEvents(eventLog, 40), [eventLog]);
 
+  const actionAlerts = useMemo(
+    () => allAlerts.filter((a) => a.severity === 'critical' || a.severity === 'serious'),
+    [allAlerts]
+  );
+
   const comparison = useMemo(() => ownershipComparison(VEHICLES), []);
   const ranking = useMemo(() => performanceRanking(VEHICLES), []);
+
+  // Everything the assistant is allowed to reason over. Passing live state in
+  // rather than letting it reach for globals keeps its answers reproducible.
+  const assistantContext = useMemo(
+    () => ({
+      vehicles: VEHICLES,
+      framesById,
+      fuelLogs,
+      maintenance: MAINTENANCE,
+      alerts: allAlerts,
+      actionAlerts,
+      totals,
+      occupancy,
+      comparison,
+      ranking,
+      selectedId,
+      simTime,
+    }),
+    [framesById, fuelLogs, allAlerts, actionAlerts, totals, occupancy, comparison, ranking, selectedId, simTime]
+  );
 
   /* ------------------------------------------- selected vehicle bundle --- */
 
@@ -198,22 +224,36 @@ export default function App() {
           onAddFillUp={addFillUp}
         />
 
-        <section className="panel">
-          <header className="panel__head">
-            <div>
-              <h2 className="panel__title">Alerts</h2>
-              <div className="panel__sub">Logged automatically from telemetry and records</div>
-            </div>
-            <span className="panel__meta">{allAlerts.length} open</span>
-          </header>
-          <AlertStream
-            alerts={allAlerts}
-            onSelectVehicle={selectVehicle}
-            selectedId={selectedId}
-            filter={alertFilter}
-            onFilter={setAlertFilter}
-          />
-        </section>
+        <div className="stack">
+          <section className="panel">
+            <header className="panel__head">
+              <div>
+                <h2 className="panel__title">Ask the fleet</h2>
+                <div className="panel__sub">
+                  Answers computed from live telemetry and records — no external service
+                </div>
+              </div>
+            </header>
+            <Assistant context={assistantContext} onSelectVehicle={selectVehicle} />
+          </section>
+
+          <section className="panel">
+            <header className="panel__head">
+              <div>
+                <h2 className="panel__title">Alerts</h2>
+                <div className="panel__sub">Logged automatically from telemetry and records</div>
+              </div>
+              <span className="panel__meta">{allAlerts.length} open</span>
+            </header>
+            <AlertStream
+              alerts={allAlerts}
+              onSelectVehicle={selectVehicle}
+              selectedId={selectedId}
+              filter={alertFilter}
+              onFilter={setAlertFilter}
+            />
+          </section>
+        </div>
       </div>
 
       <Panel
