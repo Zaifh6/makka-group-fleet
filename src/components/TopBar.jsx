@@ -15,9 +15,10 @@ function useTheme() {
 }
 
 const SPEEDS = [
-  { value: 1, label: 'Real time' },
-  { value: 60, label: '1 min/sec' },
-  { value: 300, label: '5 min/sec' },
+  { value: 1, label: 'Real time', hint: 'Exactly as fast as the vehicles actually move' },
+  { value: 10, label: '10×', hint: 'Gentle drift — easy to watch' },
+  { value: 60, label: '60×', hint: 'One simulated minute per second' },
+  { value: 300, label: '300×', hint: 'Fast-forward a whole shift' },
 ];
 
 export default function TopBar({ simTime, running, timeScale, onToggleRunning, onChangeScale }) {
@@ -41,6 +42,7 @@ export default function TopBar({ simTime, running, timeScale, onToggleRunning, o
               className="btn"
               aria-pressed={timeScale === s.value}
               onClick={() => onChangeScale(s.value)}
+              title={s.hint}
             >
               {s.label}
             </button>

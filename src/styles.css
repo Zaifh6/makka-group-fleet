@@ -422,28 +422,39 @@ button { font: inherit; color: inherit; }
 }
 .leaflet-popup-content { margin: 12px 14px; font-family: var(--sans); }
 
-/* vehicle marker */
-.vmarker {
+/* vehicle marker — a top-down car/truck rotated to its heading */
+.vmarker-wrap { background: none; border: none; }
+
+.vmarker { position: relative; width: 48px; height: 48px; }
+
+/* Only this layer rotates; the label above must stay upright. */
+.vmarker__rot {
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
-  width: 100%;
-  height: 100%;
+  transform-origin: 50% 50%;
+  will-change: transform;
 }
-.vmarker__dot {
-  width: 16px; height: 16px;
+.vmarker__rot svg {
+  display: block;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+}
+
+.vmarker__halo {
+  position: absolute;
+  inset: 4px;
   border-radius: 50%;
-  border: 2.5px solid #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.45);
-  transition: transform 0.15s;
+  background: color-mix(in srgb, var(--primary) 26%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 55%, transparent);
+  opacity: 0;
+  transition: opacity 0.15s;
 }
-.vmarker--selected .vmarker__dot {
-  width: 22px; height: 22px;
-  border-width: 3px;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 35%, transparent), 0 1px 6px rgba(0,0,0,0.5);
-}
+.vmarker--selected .vmarker__halo { opacity: 1; }
+
 .vmarker__label {
   position: absolute;
-  top: -22px;
+  top: -14px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--surface);
@@ -452,8 +463,8 @@ button { font: inherit; color: inherit; }
   font-family: var(--mono);
   font-size: 10.5px;
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 2px 7px;
+  border-radius: 5px;
   white-space: nowrap;
   box-shadow: var(--shadow);
   pointer-events: none;

@@ -31,7 +31,7 @@ Requires Node 18+ (developed on Node 24).
 | Area | What it shows |
 |---|---|
 | **Fleet overview** | Vehicle counts by live state, utilisation, 30-day fuel and maintenance cost, distance, all-in cost per km, net contribution |
-| **Live fleet map** | A real OpenStreetMap slippy map of Peshawar and Mardan with vehicles moving along actual roads, geofenced business areas shaded on top. Click any marker to select it; the selected vehicle draws today's route trail |
+| **Live fleet map** | A real OpenStreetMap slippy map of Peshawar and Mardan. Trucks and vans move smoothly along actual roads as top-down icons rotated to their heading, with geofenced business areas shaded underneath. Click any vehicle to select it; the selected one draws today's route trail |
 | **Zone occupancy** | How many vehicles are inside each business area right now, plus how many are in transit between areas |
 | **Fleet roster** | Every vehicle with live speed, current area, ownership and open-alert count |
 | **Vehicle detail** | Five tabs — Overview, Fuel & efficiency, Maintenance, Economics, Video & clips |
@@ -96,8 +96,15 @@ braking and harsh-event thresholds behave realistically even though the wall clo
 compressed. Speed is clamped to the limit of whichever geofence the vehicle is physically
 inside, which is what makes overspeed detection meaningful rather than arbitrary.
 
-**Time controls.** The top bar runs the clock at 1×, 60× (default) or 300×, and pauses the
-feed. At 60× one real second is one simulated minute.
+**Time controls.** The top bar runs the clock at 1× (real time), 10× (default), 60× or 300×,
+and pauses the feed. 10× is a gentle drift that reads as driving; 300× fast-forwards a whole
+shift in a couple of minutes.
+
+**Smooth motion.** Fixes land once a second, but the map draws vehicles on a
+`requestAnimationFrame` loop that interpolates between the last two positions, so they glide
+rather than teleport. Heading is interpolated the short way round the compass, so a vehicle
+turning past north never spins backwards through 359°. Each vehicle is a top-down car or
+truck silhouette rotated to its actual heading.
 
 ---
 

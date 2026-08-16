@@ -3,6 +3,7 @@ import { createTelemetryFeed } from '../sim/telemetryFeed.js';
 import { toAlert } from '../sim/alerts.js';
 
 const EVENT_LOG_LIMIT = 80;
+const DEFAULT_TIME_SCALE = 10;
 
 /**
  * Subscribes the UI to the telemetry feed and keeps a rolling event log.
@@ -11,8 +12,11 @@ const EVENT_LOG_LIMIT = 80;
  * and events from here, exactly as it would from a WebSocket client.
  */
 export function useFleetTelemetry(vehicles) {
+  // 10× is the default: fast enough that the fleet visibly moves, slow enough
+  // that a vehicle crossing the territory reads as driving rather than warping.
+  // The map interpolates between fixes, so motion stays smooth at any scale.
   const feed = useMemo(
-    () => createTelemetryFeed({ vehicles, tickMs: 1000, timeScale: 60 }),
+    () => createTelemetryFeed({ vehicles, tickMs: 1000, timeScale: DEFAULT_TIME_SCALE }),
     [vehicles]
   );
 
@@ -20,7 +24,7 @@ export function useFleetTelemetry(vehicles) {
   const [eventLog, setEventLog] = useState([]);
   const [simTime, setSimTime] = useState(() => new Date());
   const [running, setRunning] = useState(true);
-  const [timeScale, setTimeScale] = useState(60);
+  const [timeScale, setTimeScale] = useState(DEFAULT_TIME_SCALE);
   const seq = useRef(0);
 
   useEffect(() => {
